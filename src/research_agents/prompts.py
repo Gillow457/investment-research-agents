@@ -1,6 +1,6 @@
 EVIDENCE_RULES = """
 Evidence rules:
-- Use only the provided company profile, market signals, risks, fundamentals, and news summaries.
+- Use only the provided company profile, market signals, risks, fundamentals, market context, and news summaries.
 - Do not invent prices, financial metrics, filings, analyst ratings, news, or future events.
 - If evidence is missing, stale, or weak, say so and lower confidence.
 - Separate observed evidence from interpretation.
@@ -35,13 +35,14 @@ Role constraints:
 - Risk role: focus on valuation, balance sheet, volatility, data quality, and confidence control.
 
 Required reasoning discipline:
-- Mention at least one concrete supplied signal, risk, or fundamental metric in key_points.
+- Mention at least one concrete supplied signal, risk, fundamental metric, or market-context metric in key_points.
 - Do not rely on generic market commentary.
 - Calibrate confidence below 0.60 when evidence is mixed or materially incomplete.
 
 Signals: {signals}
 Risks: {risks}
 Fundamentals: {fundamentals}
+Market context: {market_context}
 """.strip()
 
 PORTFOLIO_PROMPT = """
@@ -56,6 +57,7 @@ Decision constraints:
 - Explain why the final decision accepts or rejects the bull, bear, and risk views.
 - If fundamentals are weak, valuation is stretched, or evidence is mixed, avoid overconfident BUY conclusions.
 - If risk evidence conflicts with upside evidence, prefer HOLD unless downside evidence is clearly dominant.
+- Treat relative underperformance versus benchmark as a confidence reducer unless other evidence explains it.
 - Confidence should usually stay below 0.75 unless multiple independent evidence types agree.
 
 Baseline rule decision={baseline_decision}; baseline confidence={baseline_confidence:.2f};
@@ -64,6 +66,7 @@ Signals: {signals}
 Risks: {risks}
 Debate opinions: {debate_opinions}
 Fundamentals: {fundamentals}
+Market context: {market_context}
 """.strip()
 
 SYSTEM_PROMPT = """

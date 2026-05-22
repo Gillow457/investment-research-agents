@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from research_agents.graph.state import AgentTrace, DebateOpinion, FundamentalMetrics, RiskNote, Signal
+from research_agents.graph.state import AgentTrace, DebateOpinion, FundamentalMetrics, MarketContext, RiskNote, Signal
 from research_agents.llm.client import LLMClient
 from research_agents.prompts import EVIDENCE_RULES, JSON_RULES, PORTFOLIO_PROMPT
 from research_agents.reports.models import ResearchReport
@@ -31,6 +31,7 @@ class PortfolioManagerAgent:
         risks: list[RiskNote],
         debate_opinions: list[DebateOpinion],
         fundamentals: FundamentalMetrics | None,
+        market_context: MarketContext | None,
         trace: list[AgentTrace],
     ) -> dict:
         score = sum(signal.score for signal in signals)
@@ -59,6 +60,7 @@ class PortfolioManagerAgent:
             risks=[risk.model_dump() for risk in risks],
             debate_opinions=[opinion.model_dump() for opinion in debate_opinions],
             fundamentals=fundamentals.model_dump() if fundamentals else None,
+            market_context=market_context.model_dump() if market_context else None,
         )
         output = self._llm.complete(prompt, response_schema=PortfolioDecisionOutput)
         if not isinstance(output, PortfolioDecisionOutput):
@@ -78,6 +80,7 @@ class PortfolioManagerAgent:
             confidence=output.confidence,
             summary=output.summary,
             fundamentals=fundamentals,
+            market_context=market_context,
             signals=signals,
             risks=risks,
             debate_opinions=debate_opinions,

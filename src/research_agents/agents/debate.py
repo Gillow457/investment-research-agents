@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from research_agents.graph.state import AgentTrace, DebateOpinion, FundamentalMetrics, RiskNote, Signal
+from research_agents.graph.state import AgentTrace, DebateOpinion, FundamentalMetrics, MarketContext, RiskNote, Signal
 from research_agents.llm.client import LLMClient
 from research_agents.prompts import DEBATE_PROMPT, EVIDENCE_RULES, JSON_RULES
 
@@ -29,6 +29,7 @@ class DebateAgent:
         signals: list[Signal],
         risks: list[RiskNote],
         fundamentals: FundamentalMetrics | None,
+        market_context: MarketContext | None,
     ) -> dict:
         prompt = DEBATE_PROMPT.format(
             role=self.role,
@@ -39,6 +40,7 @@ class DebateAgent:
             signals=[signal.model_dump() for signal in signals],
             risks=[risk.model_dump() for risk in risks],
             fundamentals=fundamentals.model_dump() if fundamentals else None,
+            market_context=market_context.model_dump() if market_context else None,
         )
         output = self._llm.complete(prompt, response_schema=DebateOpinionOutput)
         if not isinstance(output, DebateOpinionOutput):

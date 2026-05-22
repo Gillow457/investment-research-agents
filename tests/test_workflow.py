@@ -14,8 +14,11 @@ def test_run_research_completes_with_mock_data() -> None:
     assert report.decision in {"BUY", "HOLD", "SELL"}
     assert report.fundamentals is not None
     assert report.fundamentals.trailing_pe is not None
+    assert report.market_context is not None
+    assert report.market_context.benchmark_ticker == "SPY"
     assert report.signals
     assert any(signal.name == "fundamental_quality" for signal in report.signals)
+    assert any(signal.name == "market_context" for signal in report.signals)
     assert report.risks
     assert [opinion.role for opinion in report.debate_opinions] == ["bull", "bear", "risk"]
     assert [trace.agent for trace in report.agent_trace] == [
@@ -23,6 +26,7 @@ def test_run_research_completes_with_mock_data() -> None:
         "NewsSentimentAgent",
         "TechnicalAnalystAgent",
         "FundamentalAnalystAgent",
+        "MarketContextAgent",
         "RiskManagerAgent",
         "BullDebateAgent",
         "BearDebateAgent",

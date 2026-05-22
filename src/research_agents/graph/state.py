@@ -34,7 +34,15 @@ class NewsItem(BaseModel):
 
 
 class FundamentalMetrics(BaseModel):
+    source: str | None = None
     market_cap: float | None = None
+    revenue: float | None = None
+    net_income: float | None = None
+    operating_income: float | None = None
+    total_assets: float | None = None
+    total_liabilities: float | None = None
+    operating_cash_flow: float | None = None
+    capital_expenditure: float | None = None
     trailing_pe: float | None = None
     forward_pe: float | None = None
     price_to_book: float | None = None
@@ -44,6 +52,14 @@ class FundamentalMetrics(BaseModel):
     profit_margin: float | None = None
     free_cash_flow: float | None = None
     debt_to_equity: float | None = None
+
+
+class MarketContext(BaseModel):
+    benchmark_ticker: str
+    ticker_return: float
+    benchmark_return: float
+    relative_return: float
+    lookback_days: int
 
 
 class Signal(BaseModel):
@@ -78,6 +94,7 @@ class ResearchState(TypedDict, total=False):
     price_history: list[PricePoint]
     news_items: list[NewsItem]
     fundamentals: FundamentalMetrics
+    market_context: MarketContext
     signals: Annotated[list[Signal], append_items]
     risks: Annotated[list[RiskNote], append_items]
     debate_opinions: Annotated[list[DebateOpinion], append_items]

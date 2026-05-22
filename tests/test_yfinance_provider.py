@@ -2,6 +2,7 @@ from datetime import date
 from types import SimpleNamespace
 
 from research_agents.data.yfinance_provider import YFinanceMarketDataProvider, YFinanceNewsProvider
+from research_agents.data.yfinance_provider import _benchmark_for_ticker
 
 
 class FakeTicker:
@@ -62,6 +63,7 @@ def test_yfinance_market_data_provider_maps_profile_and_prices(monkeypatch) -> N
     profile = provider.get_company_profile("aapl")
     prices = provider.get_price_history("aapl", date(2026, 5, 17))
     fundamentals = provider.get_fundamentals("aapl")
+    market_context = provider.get_market_context("aapl", date(2026, 5, 17), prices)
 
     assert profile.ticker == "AAPL"
     assert profile.name == "Apple Inc."
@@ -69,6 +71,8 @@ def test_yfinance_market_data_provider_maps_profile_and_prices(monkeypatch) -> N
     assert prices[-1].close == 182.0
     assert fundamentals.trailing_pe == 31.5
     assert fundamentals.revenue_growth == 0.06
+    assert market_context.benchmark_ticker == "SPY"
+    assert market_context.lookback_days == 2
 
 
 def test_yfinance_news_provider_maps_news(monkeypatch) -> None:
@@ -78,3 +82,7 @@ def test_yfinance_news_provider_maps_news(monkeypatch) -> None:
 
     assert news[0].source == "FakeNews"
     assert news[0].sentiment > 0
+
+
+def test_yfinance_benchmark_mapping_supports_taiwan_tickers() -> None:
+    assert _benchmark_for_ticker("2357.TW") == "^TWII"

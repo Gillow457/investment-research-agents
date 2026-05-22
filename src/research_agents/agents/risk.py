@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from research_agents.graph.state import AgentTrace, FundamentalMetrics, PricePoint, RiskNote, Signal
+from research_agents.graph.state import AgentTrace, FundamentalMetrics, MarketContext, PricePoint, RiskNote, Signal
 
 
 class RiskManagerAgent:
@@ -11,6 +11,7 @@ class RiskManagerAgent:
         price_history: list[PricePoint],
         signals: list[Signal],
         fundamentals: FundamentalMetrics | None = None,
+        market_context: MarketContext | None = None,
     ) -> dict:
         closes = [point.close for point in price_history]
         daily_moves = [
@@ -70,6 +71,17 @@ class RiskManagerAgent:
                     level="medium",
                     category="valuation",
                     detail=f"Trailing PE is elevated at {fundamentals.trailing_pe:.2f}.",
+                )
+            )
+        if market_context and market_context.relative_return < -0.03:
+            risks.append(
+                RiskNote(
+                    level="medium",
+                    category="relative_performance",
+                    detail=(
+                        f"Ticker underperformed {market_context.benchmark_ticker} by "
+                        f"{abs(market_context.relative_return):.1%} over the lookback window."
+                    ),
                 )
             )
 

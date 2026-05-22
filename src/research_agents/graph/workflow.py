@@ -9,6 +9,7 @@ from research_agents.agents import (
     MarketDataAgent,
     DebateAgent,
     FundamentalAnalystAgent,
+    MarketContextAgent,
     NewsSentimentAgent,
     PortfolioManagerAgent,
     RiskManagerAgent,
@@ -16,6 +17,9 @@ from research_agents.agents import (
 )
 from research_agents.config import Settings
 from research_agents.data import (
+    CachedMarketDataProvider,
+    CachedNewsProvider,
+    CompositeMarketDataProvider,
     MockMarketDataProvider,
     MockNewsProvider,
     GDELTNewsProvider,
@@ -46,8 +50,15 @@ def build_research_graph(llm: LLMClient | None = None, data_source: str = "mock"
     elif data_source == "yfinance_gdelt":
         market_data = YFinanceMarketDataProvider()
         news = GDELTNewsProvider()
+    elif data_source == "yfinance_gdelt_sec":
+        market_data = CompositeMarketDataProvider(YFinanceMarketDataProvider())
+        news = GDELTNewsProvider()
     else:
-        raise ValueError("Data source must be 'mock', 'yfinance', or 'yfinance_gdelt'.")
+        raise ValueError("Data source must be 'mock', 'yfinance', 'yfinance_gdelt', or 'yfinance_gdelt_sec'.")
+
+    if data_source != "mock":
+        market_data = CachedMarketDataProvider(market_data, data_source)
+        news = CachedNewsProvider(news, data_source)
 
     llm_client = llm or create_llm_client(Settings.from_env())
 
@@ -55,6 +66,7 @@ def build_research_graph(llm: LLMClient | None = None, data_source: str = "mock"
     news_agent = NewsSentimentAgent(news, llm_client)
     technical_agent = TechnicalAnalystAgent()
     fundamental_agent = FundamentalAnalystAgent()
+    market_context_agent = MarketContextAgent()
     risk_agent = RiskManagerAgent()
     bull_agent = DebateAgent("bull", llm_client)
     bear_agent = DebateAgent("bear", llm_client)
@@ -73,8 +85,16 @@ def build_research_graph(llm: LLMClient | None = None, data_source: str = "mock"
     def analyze_fundamentals(state: ResearchState) -> dict:
         return fundamental_agent.run(state["fundamentals"])
 
+    def analyze_market_context(state: ResearchState) -> dict:
+        return market_context_agent.run(state["market_context"])
+
     def assess_risk(state: ResearchState) -> dict:
-        return risk_agent.run(state["price_history"], state.get("signals", []), state.get("fundamentals"))
+        return risk_agent.run(
+            state["price_history"],
+            state.get("signals", []),
+            state.get("fundamentals"),
+            state.get("market_context"),
+        )
 
     def debate_bull(state: ResearchState) -> dict:
         return bull_agent.run(
@@ -83,6 +103,7 @@ def build_research_graph(llm: LLMClient | None = None, data_source: str = "mock"
             state.get("signals", []),
             state.get("risks", []),
             state.get("fundamentals"),
+            state.get("market_context"),
         )
 
     def debate_bear(state: ResearchState) -> dict:
@@ -92,6 +113,7 @@ def build_research_graph(llm: LLMClient | None = None, data_source: str = "mock"
             state.get("signals", []),
             state.get("risks", []),
             state.get("fundamentals"),
+            state.get("market_context"),
         )
 
     def debate_risk(state: ResearchState) -> dict:
@@ -101,6 +123,7 @@ def build_research_graph(llm: LLMClient | None = None, data_source: str = "mock"
             state.get("signals", []),
             state.get("risks", []),
             state.get("fundamentals"),
+            state.get("market_context"),
         )
 
     def decide_portfolio(state: ResearchState) -> dict:
@@ -111,6 +134,7 @@ def build_research_graph(llm: LLMClient | None = None, data_source: str = "mock"
             risks=state.get("risks", []),
             debate_opinions=state.get("debate_opinions", []),
             fundamentals=state.get("fundamentals"),
+            market_context=state.get("market_context"),
             trace=state.get("agent_trace", []),
         )
 
@@ -119,6 +143,7 @@ def build_research_graph(llm: LLMClient | None = None, data_source: str = "mock"
     graph.add_node("news_sentiment", analyze_news)
     graph.add_node("technical_analysis", analyze_technicals)
     graph.add_node("fundamental_analysis", analyze_fundamentals)
+    graph.add_node("market_context_analysis", analyze_market_context)
     graph.add_node("risk_management", assess_risk)
     graph.add_node("bull_debate", debate_bull)
     graph.add_node("bear_debate", debate_bear)
@@ -129,7 +154,8 @@ def build_research_graph(llm: LLMClient | None = None, data_source: str = "mock"
     graph.add_edge("market_data", "news_sentiment")
     graph.add_edge("news_sentiment", "technical_analysis")
     graph.add_edge("technical_analysis", "fundamental_analysis")
-    graph.add_edge("fundamental_analysis", "risk_management")
+    graph.add_edge("fundamental_analysis", "market_context_analysis")
+    graph.add_edge("market_context_analysis", "risk_management")
     graph.add_edge("risk_management", "bull_debate")
     graph.add_edge("bull_debate", "bear_debate")
     graph.add_edge("bear_debate", "risk_debate")

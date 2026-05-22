@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from typing import Any, Protocol, TypeVar
 
 from openai import OpenAI
 from pydantic import BaseModel
 
+from research_agents.cache import cache_get_json, cache_set_json
 from research_agents.config import Settings
 from research_agents.prompts import SYSTEM_PROMPT
+from research_agents.rate_limit import rate_limit
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -87,6 +90,7 @@ class OpenAICompatibleLLMClient:
         self._model = model
 
     def complete(self, prompt: str, response_schema: type[T] | None = None) -> str | T:
+        rate_limit("llm")
         user_content = prompt
         response_format = None
         if response_schema is not None:
@@ -119,11 +123,33 @@ class OpenAICompatibleLLMClient:
         return content.strip()
 
 
+class CachedLLMClient:
+    def __init__(self, client: LLMClient, model: str) -> None:
+        self._client = client
+        self._model = model
+
+    def complete(self, prompt: str, response_schema: type[T] | None = None) -> str | T:
+        schema_name = response_schema.__name__ if response_schema else "text"
+        key = "llm:" + sha256(f"{self._model}:{schema_name}:{prompt}".encode("utf-8")).hexdigest()
+        cached = cache_get_json(key)
+        if cached is not None:
+            if response_schema is None:
+                return str(cached["content"])
+            return response_schema.model_validate(cached["content"])
+        output = self._client.complete(prompt, response_schema=response_schema)
+        if response_schema is None:
+            cache_set_json(key, {"content": output})
+        elif isinstance(output, BaseModel):
+            cache_set_json(key, {"content": output.model_dump(mode="json")})
+        return output
+
+
 def create_llm_client(settings: Settings) -> LLMClient:
     if not settings.openai_api_key:
         return StubLLMClient()
-    return OpenAICompatibleLLMClient(
+    client = OpenAICompatibleLLMClient(
         api_key=settings.openai_api_key,
         base_url=settings.openai_base_url,
         model=settings.openai_model,
     )
+    return CachedLLMClient(client, settings.openai_model) if settings.cache_mode.lower() != "none" else client

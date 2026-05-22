@@ -90,3 +90,54 @@ def test_report_store_migrates_old_table(tmp_path) -> None:
     assert queued.status == "queued"
     assert queued.attempts == 0
     assert queued.max_attempts == 3
+
+
+def test_report_store_batch_item_state_and_counts(tmp_path) -> None:
+    store = ReportStore(tmp_path / "reports.sqlite3")
+    batch = store.create_batch(["AAPL", "NVDA"], None, "mock", concurrency=2)
+    items = store.list_batch_items(batch.id)
+
+    running_batch = store.mark_batch_running(batch.id)
+    running_item = store.mark_batch_item_running(items[0].id, "2026-05-17")
+    report = run_research("AAPL", date(2026, 5, 17))
+    report_record = store.create_queued("AAPL", "2026-05-17", "mock", batch_id=batch.id)
+    completed_report = store.mark_completed(report_record.id, report, render_markdown(report))
+    completed_item = store.mark_batch_item_completed(running_item.id, completed_report)
+    failed_item = store.mark_batch_item_failed(items[1].id, "bad ticker")
+    final_batch = store.finalize_batch(batch.id)
+
+    assert running_batch.status == "running"
+    assert completed_item.status == "completed"
+    assert completed_item.report_id == completed_report.id
+    assert completed_item.decision == report.decision
+    assert failed_item.status == "failed"
+    assert final_batch.status == "completed_with_errors"
+    assert final_batch.completed == 1
+    assert final_batch.failed == 1
+
+
+def test_report_store_retries_failed_batch_items(tmp_path) -> None:
+    store = ReportStore(tmp_path / "reports.sqlite3")
+    batch = store.create_batch(["AAPL", "BAD"], None, "mock", concurrency=1)
+    items = store.list_batch_items(batch.id)
+
+    store.mark_batch_running(batch.id)
+    store.mark_batch_item_completed(
+        items[0].id,
+        store.mark_completed(
+            store.create_queued("AAPL", "2026-05-17", "mock", batch_id=batch.id).id,
+            run_research("AAPL", date(2026, 5, 17)),
+            "ok",
+        ),
+    )
+    store.mark_batch_item_failed(items[1].id, "bad ticker")
+    store.finalize_batch(batch.id)
+
+    retried = store.retry_failed_batch_items(batch.id)
+    retried_items = store.list_batch_items(batch.id)
+
+    assert retried.status == "queued"
+    assert retried.queued == 1
+    assert retried.completed == 1
+    assert [item.status for item in retried_items] == ["completed", "queued"]
+    assert retried_items[1].report_id is None

@@ -16,13 +16,18 @@ class MarketDataAgent:
         profile = self._market_data.get_company_profile(ticker)
         prices = self._market_data.get_price_history(ticker, analysis_date)
         fundamentals = self._market_data.get_fundamentals(ticker)
+        market_context = self._market_data.get_market_context(ticker, analysis_date, prices)
         trace = AgentTrace(
             agent=self.name,
-            message=f"Loaded profile for {profile.name}, {len(prices)} daily prices, and fundamentals.",
+            message=(
+                f"Loaded profile for {profile.name}, {len(prices)} daily prices, "
+                f"fundamentals, and {market_context.benchmark_ticker} benchmark context."
+            ),
         )
         return {
             "company_profile": profile,
             "price_history": prices,
             "fundamentals": fundamentals,
+            "market_context": market_context,
             "agent_trace": [trace],
         }
