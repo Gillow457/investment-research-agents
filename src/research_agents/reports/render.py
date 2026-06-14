@@ -6,6 +6,7 @@ from research_agents.reports.models import ResearchReport
 def render_markdown(report: ResearchReport) -> str:
     fundamentals = _render_fundamentals(report)
     market_context = _render_market_context(report)
+    position_sizing = _render_position_sizing(report)
     signals = "\n".join(
         f"- **{signal.name}**: `{signal.value}` ({signal.score:+.2f}) - {signal.rationale}"
         for signal in report.signals
@@ -30,6 +31,8 @@ def render_markdown(report: ResearchReport) -> str:
         f"{fundamentals}\n\n"
         "## Market Context\n\n"
         f"{market_context}\n\n"
+        "## Position Sizing\n\n"
+        f"{position_sizing}\n\n"
         "## Signals\n\n"
         f"{signals}\n\n"
         "## Risks\n\n"
@@ -56,6 +59,22 @@ def _render_fundamentals(report: ResearchReport) -> str:
         ("Profit margin", _format_pct(metrics.profit_margin)),
         ("Free cash flow", _format_large(metrics.free_cash_flow)),
         ("Debt/equity", _format_ratio(metrics.debt_to_equity)),
+    ]
+    return "\n".join(f"- **{label}**: {value}" for label, value in rows)
+
+
+def _render_position_sizing(report: ResearchReport) -> str:
+    if report.position_sizing is None:
+        return "- No portfolio context provided; no trade sizing plan generated."
+    sizing = report.position_sizing
+    rows = [
+        ("Action", sizing.action),
+        ("Current weight", _format_pct(sizing.current_weight)),
+        ("Target weight", _format_pct(sizing.target_weight)),
+        ("Trade value", _format_large(sizing.trade_value)),
+        ("Trade shares", "n/a" if sizing.trade_shares is None else f"{sizing.trade_shares:.4f}"),
+        ("Rationale", sizing.rationale),
+        ("Constraints", "; ".join(sizing.constraints) if sizing.constraints else "None"),
     ]
     return "\n".join(f"- **{label}**: {value}" for label, value in rows)
 

@@ -28,7 +28,8 @@ from research_agents.data import (
 )
 from research_agents.graph.state import ResearchState
 from research_agents.llm.client import LLMClient, create_llm_client
-from research_agents.reports.models import ResearchReport
+from research_agents.reports.models import PortfolioContext, ResearchReport
+from research_agents.agents.position_sizing import PositionSizingAgent
 
 _TICKER_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9.:-]{0,15}$")
 
@@ -180,3 +181,18 @@ def run_research(ticker: str, analysis_date: date, data_source: str = "mock") ->
     if not isinstance(report, ResearchReport):
         raise TypeError("Research graph completed without a valid ResearchReport.")
     return report
+
+
+def run_research_with_portfolio(
+    ticker: str,
+    analysis_date: date,
+    portfolio_context: PortfolioContext | dict,
+    data_source: str = "mock",
+) -> ResearchReport:
+    context = (
+        portfolio_context
+        if isinstance(portfolio_context, PortfolioContext)
+        else PortfolioContext.model_validate(portfolio_context)
+    )
+    report = run_research(ticker, analysis_date, data_source=data_source)
+    return PositionSizingAgent().run(report, context)

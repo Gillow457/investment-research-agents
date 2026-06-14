@@ -38,7 +38,8 @@ class PostgresReportStore:
                         updated_at TEXT NOT NULL,
                         started_at TEXT,
                         finished_at TEXT,
-                        batch_id INTEGER
+                        batch_id INTEGER,
+                        portfolio_context_json TEXT
                     )
                     """
                 )
@@ -60,7 +61,8 @@ class PostgresReportStore:
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL,
                         started_at TEXT,
-                        finished_at TEXT
+                        finished_at TEXT,
+                        portfolio_context_json TEXT
                     )
                     """
                 )
@@ -89,6 +91,8 @@ class PostgresReportStore:
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_reports_ticker_date ON reports(ticker, analysis_date)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_reports_batch_id ON reports(batch_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_batch_items_batch_id ON report_batch_items(batch_id)"))
+            connection.execute(text("ALTER TABLE reports ADD COLUMN IF NOT EXISTS portfolio_context_json TEXT"))
+            connection.execute(text("ALTER TABLE report_batches ADD COLUMN IF NOT EXISTS portfolio_context_json TEXT"))
 
     def create_queued(
         self,
@@ -97,6 +101,7 @@ class PostgresReportStore:
         data_source: str,
         max_attempts: int = 3,
         batch_id: int | None = None,
+        portfolio_context_json: str | None = None,
     ) -> ReportRecord:
         now = _now()
         with self._engine.begin() as connection:
@@ -105,9 +110,9 @@ class PostgresReportStore:
                     """
                     INSERT INTO reports (
                         ticker, analysis_date, data_source, status, attempts, max_attempts,
-                        created_at, updated_at, batch_id
+                        created_at, updated_at, batch_id, portfolio_context_json
                     ) VALUES (:ticker, :analysis_date, :data_source, :status, :attempts, :max_attempts,
-                              :created_at, :updated_at, :batch_id)
+                              :created_at, :updated_at, :batch_id, :portfolio_context_json)
                     RETURNING id
                     """
                 ),
@@ -121,6 +126,7 @@ class PostgresReportStore:
                     "created_at": now,
                     "updated_at": now,
                     "batch_id": batch_id,
+                    "portfolio_context_json": portfolio_context_json,
                 },
             ).scalar_one()
         record = self.get(int(report_id))
@@ -137,6 +143,7 @@ class PostgresReportStore:
         requested_analysis_date: str | None,
         data_source: str,
         concurrency: int,
+        portfolio_context_json: str | None = None,
     ) -> BatchRecord:
         now = _now()
         normalized = [ticker.upper() for ticker in tickers]
@@ -146,9 +153,9 @@ class PostgresReportStore:
                     """
                     INSERT INTO report_batches (
                         status, total, queued, running, completed, failed, data_source,
-                        requested_analysis_date, concurrency, created_at, updated_at
+                        requested_analysis_date, concurrency, created_at, updated_at, portfolio_context_json
                     ) VALUES (:status, :total, :queued, :running, :completed, :failed, :data_source,
-                              :requested_analysis_date, :concurrency, :created_at, :updated_at)
+                              :requested_analysis_date, :concurrency, :created_at, :updated_at, :portfolio_context_json)
                     RETURNING id
                     """
                 ),
@@ -164,6 +171,7 @@ class PostgresReportStore:
                     "concurrency": concurrency,
                     "created_at": now,
                     "updated_at": now,
+                    "portfolio_context_json": portfolio_context_json,
                 },
             ).scalar_one()
             connection.execute(
@@ -531,6 +539,7 @@ def _record_from_row(row: RowMapping) -> ReportRecord:
         started_at=row["started_at"],
         finished_at=row["finished_at"],
         batch_id=row["batch_id"],
+        portfolio_context_json=row["portfolio_context_json"],
     )
 
 
@@ -550,6 +559,7 @@ def _batch_from_row(row: RowMapping) -> BatchRecord:
         updated_at=str(row["updated_at"]),
         started_at=row["started_at"],
         finished_at=row["finished_at"],
+        portfolio_context_json=row["portfolio_context_json"],
     )
 
 

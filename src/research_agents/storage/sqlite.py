@@ -28,6 +28,7 @@ class ReportRecord:
     started_at: str | None
     finished_at: str | None
     batch_id: int | None = None
+    portfolio_context_json: str | None = None
 
     def report(self) -> ResearchReport | None:
         if self.report_json is None:
@@ -51,6 +52,7 @@ class BatchRecord:
     updated_at: str
     started_at: str | None
     finished_at: str | None
+    portfolio_context_json: str | None = None
 
 
 @dataclass(frozen=True)
@@ -99,7 +101,8 @@ class ReportStore:
                     updated_at TEXT NOT NULL,
                     started_at TEXT,
                     finished_at TEXT,
-                    batch_id INTEGER
+                    batch_id INTEGER,
+                    portfolio_context_json TEXT
                 )
                 """
             )
@@ -119,7 +122,8 @@ class ReportStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     started_at TEXT,
-                    finished_at TEXT
+                    finished_at TEXT,
+                    portfolio_context_json TEXT
                 )
                 """
             )
@@ -162,6 +166,7 @@ class ReportStore:
         data_source: str,
         max_attempts: int = 3,
         batch_id: int | None = None,
+        portfolio_context_json: str | None = None,
     ) -> ReportRecord:
         now = _now()
         with self._connect() as connection:
@@ -169,10 +174,10 @@ class ReportStore:
                 """
                 INSERT INTO reports (
                     ticker, analysis_date, data_source, status, attempts, max_attempts,
-                    created_at, updated_at, batch_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, batch_id, portfolio_context_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (ticker, analysis_date, data_source, "queued", 0, max_attempts, now, now, batch_id),
+                (ticker, analysis_date, data_source, "queued", 0, max_attempts, now, now, batch_id, portfolio_context_json),
             )
             report_id = int(cursor.lastrowid)
         record = self.get(report_id)
@@ -189,6 +194,7 @@ class ReportStore:
         requested_analysis_date: str | None,
         data_source: str,
         concurrency: int,
+        portfolio_context_json: str | None = None,
     ) -> BatchRecord:
         now = _now()
         normalized = [ticker.upper() for ticker in tickers]
@@ -197,8 +203,8 @@ class ReportStore:
                 """
                 INSERT INTO report_batches (
                     status, total, queued, running, completed, failed, data_source,
-                    requested_analysis_date, concurrency, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    requested_analysis_date, concurrency, created_at, updated_at, portfolio_context_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     "queued",
@@ -212,6 +218,7 @@ class ReportStore:
                     concurrency,
                     now,
                     now,
+                    portfolio_context_json,
                 ),
             )
             batch_id = int(cursor.lastrowid)
@@ -556,19 +563,30 @@ class ReportStore:
 
     @staticmethod
     def _migrate(connection: sqlite3.Connection) -> None:
-        columns = {
+        report_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(reports)").fetchall()
         }
-        migrations = {
+        report_migrations = {
             "attempts": "ALTER TABLE reports ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
             "max_attempts": "ALTER TABLE reports ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3",
             "last_error": "ALTER TABLE reports ADD COLUMN last_error TEXT",
             "started_at": "ALTER TABLE reports ADD COLUMN started_at TEXT",
             "finished_at": "ALTER TABLE reports ADD COLUMN finished_at TEXT",
             "batch_id": "ALTER TABLE reports ADD COLUMN batch_id INTEGER",
+            "portfolio_context_json": "ALTER TABLE reports ADD COLUMN portfolio_context_json TEXT",
         }
-        for column, statement in migrations.items():
-            if column not in columns:
+        for column, statement in report_migrations.items():
+            if column not in report_columns:
+                connection.execute(statement)
+
+        batch_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(report_batches)").fetchall()
+        }
+        batch_migrations = {
+            "portfolio_context_json": "ALTER TABLE report_batches ADD COLUMN portfolio_context_json TEXT",
+        }
+        for column, statement in batch_migrations.items():
+            if column not in batch_columns:
                 connection.execute(statement)
 
 
@@ -596,6 +614,7 @@ def _record_from_row(row: sqlite3.Row) -> ReportRecord:
         started_at=row["started_at"],
         finished_at=row["finished_at"],
         batch_id=row["batch_id"],
+        portfolio_context_json=row["portfolio_context_json"],
     )
 
 
@@ -615,6 +634,7 @@ def _batch_from_row(row: sqlite3.Row) -> BatchRecord:
         updated_at=str(row["updated_at"]),
         started_at=row["started_at"],
         finished_at=row["finished_at"],
+        portfolio_context_json=row["portfolio_context_json"],
     )
 
 

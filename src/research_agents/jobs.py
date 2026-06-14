@@ -4,7 +4,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 
 from research_agents.date_resolver import resolve_analysis_date
-from research_agents.graph.workflow import run_research
+from research_agents.graph.workflow import run_research, run_research_with_portfolio
+from research_agents.reports.models import PortfolioContext
 from research_agents.reports.render import render_markdown
 from research_agents.storage import BatchItemRecord, ReportRecord, ReportStore
 
@@ -12,11 +13,20 @@ from research_agents.storage import BatchItemRecord, ReportRecord, ReportStore
 def run_report_job(report_id: int, store: ReportStore) -> ReportRecord:
     record = store.mark_running(report_id)
     try:
-        report = run_research(
-            ticker=record.ticker,
-            analysis_date=date.fromisoformat(record.analysis_date),
-            data_source=record.data_source,
-        )
+        context = _portfolio_context(record.portfolio_context_json)
+        if context is None:
+            report = run_research(
+                ticker=record.ticker,
+                analysis_date=date.fromisoformat(record.analysis_date),
+                data_source=record.data_source,
+            )
+        else:
+            report = run_research_with_portfolio(
+                ticker=record.ticker,
+                analysis_date=date.fromisoformat(record.analysis_date),
+                portfolio_context=context,
+                data_source=record.data_source,
+            )
         markdown = render_markdown(report)
         return store.mark_completed(report_id, report, markdown)
     except Exception as exc:
@@ -63,6 +73,7 @@ def _run_batch_item(
             analysis_date=resolved_date.isoformat(),
             data_source=data_source,
             batch_id=running_item.batch_id,
+            portfolio_context_json=store.get_batch(running_item.batch_id).portfolio_context_json,
         )
         completed_report = run_report_job(report_record.id, store)
         if completed_report.status == "completed":
@@ -75,3 +86,9 @@ def _run_batch_item(
             )
     except Exception as exc:
         store.mark_batch_item_failed(item.id, str(exc))
+
+
+def _portfolio_context(payload: str | None) -> PortfolioContext | None:
+    if payload is None:
+        return None
+    return PortfolioContext.model_validate_json(payload)

@@ -40,6 +40,18 @@ def test_api_creates_and_reads_report(tmp_path) -> None:
     assert "## Debate" in detail["markdown"]
 
 
+def test_api_serves_minimal_web_console(tmp_path) -> None:
+    app = create_app(ReportStore(tmp_path / "reports.sqlite3"))
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Investment Research Agents" in response.text
+    assert 'id="report-form"' in response.text
+    assert 'fetch("/reports"' in response.text
+
+
 def test_api_can_enqueue_report_without_executing_inline(tmp_path) -> None:
     queue = RecordingQueue()
     app = create_app(ReportStore(tmp_path / "reports.sqlite3"), queue_client=queue)
@@ -70,6 +82,35 @@ def test_api_creates_report_with_only_ticker(tmp_path, monkeypatch) -> None:
 
     assert response.status_code == 202
     assert response.json()["analysis_date"] == "2026-05-17"
+
+
+def test_api_creates_report_with_portfolio_context(tmp_path) -> None:
+    app = create_app(ReportStore(tmp_path / "reports.sqlite3"))
+    client = TestClient(app)
+
+    response = client.post(
+        "/reports",
+        json={
+            "ticker": "AAPL",
+            "analysis_date": "2026-05-17",
+            "data_source": "mock",
+            "portfolio_context": {
+                "portfolio_value": 100000,
+                "cash": 30000,
+                "positions": [],
+                "risk_profile": "moderate",
+                "max_position_pct": 0.1,
+                "max_new_buy_pct": 0.05,
+                "min_trade_value": 500,
+            },
+        },
+    )
+
+    assert response.status_code == 202
+    detail = client.get(f"/reports/{response.json()['id']}").json()
+    assert detail["status"] == "completed"
+    assert detail["report"]["position_sizing"]["action"] == "BUY"
+    assert "## Position Sizing" in detail["markdown"]
 
 
 def test_api_rejects_when_date_resolution_fails(tmp_path, monkeypatch) -> None:
@@ -182,6 +223,27 @@ def test_api_creates_and_reads_completed_report_batch(tmp_path) -> None:
     assert {item["ticker"] for item in detail["items"]} == {"AAPL", "NVDA"}
     assert all(item["report_id"] for item in detail["items"])
     assert all(item["decision"] in {"BUY", "HOLD", "SELL"} for item in detail["items"])
+
+
+def test_api_batch_report_uses_portfolio_context(tmp_path) -> None:
+    app = create_app(ReportStore(tmp_path / "reports.sqlite3"))
+    client = TestClient(app)
+
+    response = client.post(
+        "/report-batches",
+        json={
+            "tickers": ["AAPL"],
+            "analysis_date": "2026-05-17",
+            "data_source": "mock",
+            "portfolio_context": {"portfolio_value": 100000, "cash": 30000, "positions": []},
+        },
+    )
+
+    assert response.status_code == 202
+    batch_detail = client.get(f"/report-batches/{response.json()['id']}").json()
+    report_id = batch_detail["items"][0]["report_id"]
+    report_detail = client.get(f"/reports/{report_id}").json()
+    assert report_detail["report"]["position_sizing"]["action"] == "BUY"
 
 
 def test_api_can_enqueue_batch_without_executing_inline(tmp_path) -> None:

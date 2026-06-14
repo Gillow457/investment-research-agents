@@ -6,12 +6,14 @@ from datetime import date
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
+from research_agents.api.web import INDEX_HTML
 from research_agents.config import Settings
 from research_agents.date_resolver import resolve_analysis_date
-from research_agents.reports.models import ResearchReport
+from research_agents.reports.models import PortfolioContext, ResearchReport
 from research_agents.storage import BatchItemRecord, BatchRecord, ReportRecord, ReportStore, create_report_store
 from research_agents.task_queue import QueueClient, create_queue_client
 
@@ -20,6 +22,7 @@ class CreateReportRequest(BaseModel):
     ticker: str = Field(min_length=1, max_length=16)
     analysis_date: date | None = None
     data_source: Literal["mock", "yfinance", "yfinance_gdelt", "yfinance_gdelt_sec"] = "yfinance_gdelt_sec"
+    portfolio_context: PortfolioContext | None = None
 
 
 class ReportSummaryResponse(BaseModel):
@@ -49,6 +52,7 @@ class BatchCreateRequest(BaseModel):
     analysis_date: date | None = None
     data_source: Literal["mock", "yfinance", "yfinance_gdelt", "yfinance_gdelt_sec"] = "yfinance_gdelt_sec"
     concurrency: int = Field(default=3, ge=1, le=5)
+    portfolio_context: PortfolioContext | None = None
 
 
 class BatchSummaryResponse(BaseModel):
@@ -101,6 +105,14 @@ def create_app(store: ReportStore | None = None, queue_client: QueueClient | Non
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/", response_class=HTMLResponse)
+    def web_console() -> str:
+        return INDEX_HTML
+
+    @app.get("/ui", response_class=HTMLResponse)
+    def web_console_alias() -> str:
+        return INDEX_HTML
+
     @app.post("/reports", response_model=ReportSummaryResponse, status_code=202)
     def create_report(
         request: CreateReportRequest,
@@ -116,6 +128,9 @@ def create_app(store: ReportStore | None = None, queue_client: QueueClient | Non
             ticker=request.ticker.upper(),
             analysis_date=resolved_date.isoformat(),
             data_source=request.data_source,
+            portfolio_context_json=(
+                request.portfolio_context.model_dump_json() if request.portfolio_context is not None else None
+            ),
         )
         queue.enqueue_report(queued.id)
         return _summary_response(queued)
@@ -132,6 +147,9 @@ def create_app(store: ReportStore | None = None, queue_client: QueueClient | Non
             requested_analysis_date=request.analysis_date.isoformat() if request.analysis_date else None,
             data_source=request.data_source,
             concurrency=request.concurrency,
+            portfolio_context_json=(
+                request.portfolio_context.model_dump_json() if request.portfolio_context is not None else None
+            ),
         )
         queue.enqueue_batch(batch.id)
         return _batch_summary_response(batch)

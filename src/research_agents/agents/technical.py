@@ -30,5 +30,11 @@ class TechnicalAnalystAgent:
             score=score,
             rationale=f"Close moved {change_pct:.2f}% across the lookback window.",
         )
+        latest_close = Signal(
+            name="latest_close",
+            value=f"{last_close:.2f}",
+            score=0.0,
+            rationale="Latest close used for optional position sizing share estimates.",
+        )
         trace = AgentTrace(agent=self.name, message=f"Detected {trend} with {change_pct:.2f}% price change.")
-        return {"signals": [signal], "agent_trace": [trace]}
+        return {"signals": [signal, latest_close], "agent_trace": [trace]}
